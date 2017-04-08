@@ -34,11 +34,11 @@ UKF::UKF() {
 
     // Process noise standard deviation longitudinal acceleration in m/s^2
     //std_a_ = 30;
-    std_a_ = 0.8;
+    std_a_ = 2.5;
 
     // Process noise standard deviation yaw acceleration in rad/s^2
     //std_yawdd_ = 30;
-    std_yawdd_ = 0.6;
+    std_yawdd_ = 0.7;
     // Laser measurement noise standard deviation position1 in m
     std_laspx_ = 0.15;
 
@@ -310,8 +310,8 @@ void UKF::SigmaPointPrediction(const double delta_t ) {
 
 
 void UKF::PredictMeanAndCovariance(){
-    //write result
-   // *Xsig_out = Xsig_pred_;
+    //Next x_ and P_ are calculated here
+    // with the weight added
 
     //  Step 3 in Lecture Diagram
     // set weights
@@ -341,7 +341,7 @@ void UKF::PredictMeanAndCovariance(){
         while (x_diff(3) < -M_PI) x_diff(3) += 2. * M_PI;
 
         P_ = P_ + weights_(i) * x_diff * x_diff.transpose();
-        //P_aug_ = P_aug_ + weights_(i) * x_diff * x_diff.transpose();
+
     }
 
 }
