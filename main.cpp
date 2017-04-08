@@ -4,6 +4,7 @@
 #include <vector>
 #include "ukf.h"
 #include "measurement_package.h"
+#include "ground_truth_package.h"
 #include <fstream>
 #include <sstream>
 #include <stdlib.h>
@@ -16,7 +17,7 @@ using std::vector;
 void check_arguments(int argc, char* argv[]) {
     string usage_instructions = "Usage instructions: ";
     usage_instructions += argv[0];
-    usage_instructions += " path/to/input.txt output.txt";
+    usage_instructions += " sample-laser-radar-measurement-data-1.txt sample-laser-radar-measurement-data-output-1.txt";
 
     bool has_valid_args = false;
 
@@ -66,42 +67,45 @@ int main(int argc, char* argv[]) {
      **********************************************/
 
     vector<MeasurementPackage> measurement_pack_list;
+    vector<GroundTruthPackage> gt_pack_list;
+
     string line;
 
     // prep the measurement packages (each line represents a measurement at a
     // timestamp)
     while (getline(in_file_, line)) {
+
         string sensor_type;
         MeasurementPackage meas_package;
+        GroundTruthPackage gt_package;
         istringstream iss(line);
-        long timestamp;
+        long long timestamp;
 
         // reads first element from the current line
         iss >> sensor_type;
-
         if (sensor_type.compare("L") == 0) {
-            // laser measurement
-
+            // LASER MEASUREMENT
+            continue;
             // read measurements at this timestamp
             meas_package.sensor_type_ = MeasurementPackage::LASER;
             meas_package.raw_measurements_ = VectorXd(2);
-            float px;
-            float py;
-            iss >> px;
-            iss >> py;
-            meas_package.raw_measurements_ << px, py;
+            double x;
+            double y;
+            iss >> x;
+            iss >> y;
+            meas_package.raw_measurements_ << x, y;
             iss >> timestamp;
             meas_package.timestamp_ = timestamp;
             measurement_pack_list.push_back(meas_package);
         } else if (sensor_type.compare("R") == 0) {
-            // radar measurement
+            // RADAR MEASUREMENT
 
             // read measurements at this timestamp
             meas_package.sensor_type_ = MeasurementPackage::RADAR;
             meas_package.raw_measurements_ = VectorXd(3);
-            float ro;
-            float theta;
-            float ro_dot;
+            double ro;
+            double theta;
+            double ro_dot;
             iss >> ro;
             iss >> theta;
             iss >> ro_dot;
@@ -110,45 +114,72 @@ int main(int argc, char* argv[]) {
             meas_package.timestamp_ = timestamp;
             measurement_pack_list.push_back(meas_package);
         }
+
+        // read ground truth data to compare later
+        double x_gt;
+        double y_gt;
+        double vx_gt;
+        double vy_gt;
+        iss >> x_gt;
+        iss >> y_gt;
+        iss >> vx_gt;
+        iss >> vy_gt;
+        gt_package.gt_values_ = VectorXd(4);
+        gt_package.gt_values_ << x_gt, y_gt, vx_gt, vy_gt;
+        gt_pack_list.push_back(gt_package);
     }
 
-    // Create a UKF instance
+    // Create a Fusion EKF instance
     UKF ukf;
 
-    size_t number_of_measurements = measurement_pack_list.size();
+    // used to compute the RMSE later
+    vector<VectorXd> estimations;
+    vector<VectorXd> ground_truth;
 
-    // start filtering from the second frame (the speed is unknown in the first
-    // frame)
-    for (size_t k = 0; k < number_of_measurements; ++k) {
-        // Call the UKF-based fusion
+    //Call the EKF-based fusion
+    size_t N = measurement_pack_list.size();
+    for (size_t k = 0; k < N; ++k) {
+        // start filtering from the second frame (the speed is unknown in the first
+        // frame)
+        //cout <<" k is now at   "<< k <<endl;
         ukf.ProcessMeasurement(measurement_pack_list[k]);
 
         // output the estimation
-        out_file_ << ukf.x_(0) << "\t"; // pos1 - est
-        out_file_ << ukf.x_(1) << "\t"; // pos2 - est
-        out_file_ << ukf.x_(2) << "\t"; // vel_abs -est
-        out_file_ << ukf.x_(3) << "\t"; // yaw_angle -est
-        out_file_ << ukf.x_(4) << "\t"; // yaw_rate -est
+        out_file_ << ukf.x_(0) << "\t";
+        out_file_ << ukf.x_(1) << "\t";
+        out_file_ << ukf.x_(2) << "\t";
+        out_file_ << ukf.x_(3) << "\t";
 
         // output the measurements
         if (measurement_pack_list[k].sensor_type_ == MeasurementPackage::LASER) {
             // output the estimation
-
-            // p1 - meas
+            //cout << "  with a LASER sensor data"<<endl;
             out_file_ << measurement_pack_list[k].raw_measurements_(0) << "\t";
-
-            // p2 - meas
             out_file_ << measurement_pack_list[k].raw_measurements_(1) << "\t";
         } else if (measurement_pack_list[k].sensor_type_ == MeasurementPackage::RADAR) {
+            //cout<<"  with a RADAR sensor data"<<endl;
             // output the estimation in the cartesian coordinates
-            float ro = measurement_pack_list[k].raw_measurements_(0);
-            float phi = measurement_pack_list[k].raw_measurements_(1);
-            out_file_ << ro * cos(phi) << "\t"; // p1_meas
-            out_file_ << ro * sin(phi) << "\t"; // p2_meas
+            double ro = measurement_pack_list[k].raw_measurements_(0);
+            double phi = measurement_pack_list[k].raw_measurements_(1);
+            out_file_ << ro * cos(phi) << "\t"; // px_meas
+            out_file_ << ro * sin(phi) << "\t"; // py_meas
         }
 
-        out_file_ << "\n";
+        // output the ground truth packages
+        out_file_ << gt_pack_list[k].gt_values_(0) << "\t";
+        out_file_ << gt_pack_list[k].gt_values_(1) << "\t";
+        out_file_ << gt_pack_list[k].gt_values_(2) << "\t";
+        out_file_ << gt_pack_list[k].gt_values_(3) << "\n";
+
+        if (fabs(ukf.x_(0) > 0.001)) {
+            estimations.push_back(ukf.x_);
+            ground_truth.push_back(gt_pack_list[k].gt_values_);
+        }
     }
+
+    // compute the accuracy (RMSE)
+
+    cout << "Accuracy - RMSE:" << endl <<   ukf.CalculateRMSE(estimations, ground_truth) << endl;
 
     // close files
     if (out_file_.is_open()) {
@@ -159,6 +190,5 @@ int main(int argc, char* argv[]) {
         in_file_.close();
     }
 
-    cout << "Done!" << endl;
     return 0;
 }
