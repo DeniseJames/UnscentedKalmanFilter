@@ -9,6 +9,7 @@
 #include <sstream>
 #include <stdlib.h>
 
+
 using namespace std;
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
@@ -65,12 +66,9 @@ int main(int argc, char* argv[]) {
     /**********************************************
      *  Set Measurements                          *
      **********************************************/
-
     vector<MeasurementPackage> measurement_pack_list;
     vector<GroundTruthPackage> gt_pack_list;
-
     string line;
-
     // prep the measurement packages (each line represents a measurement at a
     // timestamp)
     while (getline(in_file_, line)) {
@@ -85,7 +83,8 @@ int main(int argc, char* argv[]) {
         iss >> sensor_type;
         if (sensor_type.compare("L") == 0) {
             // LASER MEASUREMENT
-            continue;
+			
+           //continue;
             // read measurements at this timestamp
             meas_package.sensor_type_ = MeasurementPackage::LASER;
             meas_package.raw_measurements_ = VectorXd(2);
@@ -99,7 +98,7 @@ int main(int argc, char* argv[]) {
             measurement_pack_list.push_back(meas_package);
         } else if (sensor_type.compare("R") == 0) {
             // RADAR MEASUREMENT
-
+			//continue;
             // read measurements at this timestamp
             meas_package.sensor_type_ = MeasurementPackage::RADAR;
             meas_package.raw_measurements_ = VectorXd(3);
@@ -129,21 +128,21 @@ int main(int argc, char* argv[]) {
         gt_pack_list.push_back(gt_package);
     }
 
-    // Create a Fusion EKF instance
-    UKF ukf;
+
 
     // used to compute the RMSE later
     vector<VectorXd> estimations;
     vector<VectorXd> ground_truth;
 
-    //Call the EKF-based fusion
+	// Create a Fusion EKF instance
+	UKF ukf;
     size_t N = measurement_pack_list.size();
     for (size_t k = 0; k < N; ++k) {
         // start filtering from the second frame (the speed is unknown in the first
         // frame)
         //cout <<" k is now at   "<< k <<endl;
         ukf.ProcessMeasurement(measurement_pack_list[k]);
-
+		
         // output the estimation
         out_file_ << ukf.x_(0) << "\t";
         out_file_ << ukf.x_(1) << "\t";
@@ -171,13 +170,15 @@ int main(int argc, char* argv[]) {
         out_file_ << gt_pack_list[k].gt_values_(2) << "\t";
         out_file_ << gt_pack_list[k].gt_values_(3) << "\n";
 
-        if (fabs(ukf.x_(0) > 0.001)) {
-            estimations.push_back(ukf.x_);
-            ground_truth.push_back(gt_pack_list[k].gt_values_);
-        }
+        estimations.push_back(ukf.x_);
+        ground_truth.push_back(gt_pack_list[k].gt_values_);
+		cout << "ukf.x_" << endl << ukf.x_<< endl;
+		cout << "gt_pack_list[" << k << "].gt_values_" <<endl<< gt_pack_list[k].gt_values_ << endl;
+
     }
 
     // compute the accuracy (RMSE)
+
 
     cout << "Accuracy - RMSE:" << endl <<   ukf.CalculateRMSE(estimations, ground_truth) << endl;
 
